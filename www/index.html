@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Salah Reminder</title>
+<style>
+:root{--bg:#f5f7f4;--card:#fff;--text:#16241c;--muted:#66756c;--accent:#1f7a4d;--warn:#c4780a;--bad:#c0392b;--line:#dfe6e0}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1713;--card:#18231d;--text:#e8f0ea;--muted:#8fa296;--accent:#3fbf84;--warn:#e8a43a;--bad:#ee6b5c;--line:#26352c}}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px));max-width:520px;margin:0 auto}
+h1{font-size:22px;margin:8px 0 4px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.name{font-weight:600;font-size:17px}
+.status{font-size:14px;margin-top:4px}
+.ok{color:var(--accent)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+input[type=time]{font:inherit;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:#fff;font-weight:600}
+button.done{background:var(--line);color:var(--muted)}
+.lbl{font-size:12px;color:var(--muted);margin-top:8px}
+#info{font-size:13px;color:var(--muted);margin:10px 0}
+</style>
+</head>
+<body>
+<h1>Salah Reminder</h1>
+<p class="sub">Set when each prayer’s time <b>ends</b>. You’ll get reminders 2h, 1.5h, 1h, 30m and 15m before, until you tap the notification or “Prayed”.</p>
+<div id="list"></div>
+<div id="info"></div>
+<script>
+var P=[["fajr","Fajr","06:00"],["dhuhr","Dhuhr","15:30"],["asr","Asr","18:00"],["maghrib","Maghrib","19:30"],["isha","Isha","23:59"]];
+var T=[120,90,60,30,15];
+var LN=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.LocalNotifications;
+var S={times:{},done:{}};
+try{var r=localStorage.getItem("salah2");if(r)S=JSON.parse(r)}catch(e){}
+S.times=S.times||{};S.done=S.done||{};
+P.forEach(function(p){if(!S.times[p[0]])S.times[p[0]]=p[2]});
+function save(){try{localStorage.setItem("salah2",JSON.stringify(S))}catch(e){}}
+function dkey(d){return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate()}
+function dnum(d){return (Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/86400000)%20000}
+function nid(d,pi,ti){return dnum(d)*100+pi*10+ti+1}
+function endOf(id,d){var t=S.times[id].split(":"),x=new Date(d.getTime());x.setHours(+t[0],+t[1],0,0);return x}
+function fmt(m){var h=Math.floor(m/60),mm=Math.round(m%60);return h?h+"h "+mm+"m":mm+"m"}
+function info(t){document.getElementById("info").textContent=t}
+
+async function schedule(){
+  if(!LN){info("Notifications need the installed Android app.");return}
+  try{
+    var pend=await LN.getPending();
+    if(pend.notifications.length)await LN.cancel({notifications:pend.notifications.map(function(n){return{id:n.id}})});
+    var list=[],now=Date.now();
+    for(var off=0;off<3;off++){
+      var d=new Date();d.setDate(d.getDate()+off);var k=dkey(d);
+      P.forEach(function(p,pi){
+        if(S.done[k+":"+p[0]])return;
+        var end=endOf(p[0],d).getTime();
+        T.forEach(function(t,ti){
+          var at=end-t*60000;
+          if(at>now)list.push({id:nid(d,pi,ti),title:p[1]+" is going to qaza",body:fmt(t)+" left. Pray now.",schedule:{at:new Date(at),allowWhileIdle:true},channelId:"salah",actionTypeId:"PRAYER",smallIcon:"ic_stat_salah",extra:{p:p[0],k:k}});
+        });
+      });
+    }
+    if(list.length)await LN.schedule({notifications:list});
+    info(list.length+" reminders scheduled for the next 3 days.");
+  }catch(e){info("Could not schedule: "+e)}
+}
+
+function ack(id,k){S.done[k]=true;save();schedule();render()}
+
+function render(){
+  var now=new Date(),k=dkey(now),h="";
+  P.forEach(function(p){
+    var id=p[0],m=(endOf(id,now)-now)/60000,d=S.done[k+":"+id],cls,txt;
+    if(d){cls="ok";txt="Prayed ✓"}
+    else if(m<=0){cls="bad";txt="Time ended (qaza)"}
+    else{cls=m<=30?"bad":"warn";txt=fmt(m)+" left"}
+    h+='<div class="card"><div class="row"><div><div class="name">'+p[1]+'</div><div class="status '+cls+'">'+txt+'</div></div>'
+     +'<button data-d="'+id+'" class="'+(d?"done":"")+'">'+(d?"Undo":"Prayed")+'</button></div>'
+     +'<div class="lbl">Time ends at</div><input type="time" data-t="'+id+'" value="'+S.times[id]+'"></div>';
+  });
+  var l=document.getElementById("list");
+  if(document.activeElement&&document.activeElement.tagName==="INPUT")return;
+  l.innerHTML=h;
+}
+
+document.getElementById("list").addEventListener("click",function(e){
+  var id=e.target.getAttribute("data-d");
+  if(!id)return;
+  var key=dkey(new Date())+":"+id;
+  if(S.done[key])delete S.done[key];else S.done[key]=true;
+  save();schedule();render();
+});
+document.getElementById("list").addEventListener("change",function(e){
+  var id=e.target.getAttribute("data-t");
+  if(!id)return;
+  S.times[id]=e.target.value;save();e.target.blur();schedule();render();
+});
+document.addEventListener("visibilitychange",function(){if(!document.hidden){schedule();render()}});
+
+async function init(){
+  render();setInterval(render,30000);
+  if(!LN){info("Notifications need the installed Android app.");return}
+  try{
+    await LN.requestPermissions();
+    await LN.createChannel({id:"salah",name:"Salah reminders",importance:5,vibration:true});
+    await LN.registerActionTypes({types:[{id:"PRAYER",actions:[{id:"prayed",title:"Prayed ✓",foreground:true}]}]});
+    LN.addListener("localNotificationActionPerformed",function(ev){
+      var x=(ev.notification&&ev.notification.extra)||{};
+      if(x.p&&x.k)ack(x.p,x.k+":"+x.p);
+    });
+  }catch(e){info("Setup problem: "+e)}
+  schedule();
+}
+init();
+</script>
+</body>
+</html>
