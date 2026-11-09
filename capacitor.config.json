@@ -1,0 +1,8 @@
+{
+  "appId": "com.salah.reminder",
+  "appName": "Salah Reminder",
+  "webDir": "www",
+  "plugins": {
+    "LocalNotifications": { "smallIcon": "ic_stat_salah", "iconColor": "#1F7A4D" }
+  }
+}
