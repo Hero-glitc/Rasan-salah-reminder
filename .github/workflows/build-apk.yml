@@ -40,3 +40,6 @@ jobs:
         with:
           name: salah-reminder-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          
+dependency_overrides:
+  geolocator_android: 4.6.1
