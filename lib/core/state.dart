@@ -93,9 +93,16 @@ class AppState extends ChangeNotifier {
       await Db.deleteRecord(date, p);
     } else {
       await Db.setRecord(date, p, st);
-      await Notif.cancelPrayer(date, p);
     }
+    // Refresh the screen first so the change shows immediately.
     await load();
-    if (st == stNone) await Notif.rescheduleAll();
+    // Notification work must never block or break the screen update.
+    try {
+      if (st == stNone) {
+        await Notif.rescheduleAll();
+      } else {
+        await Notif.cancelPrayer(date, p);
+      }
+    } catch (_) {}
   }
 }
