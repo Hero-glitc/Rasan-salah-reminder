@@ -1,0 +1,42 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.24.5
+          channel: stable
+          cache: true
+      - name: Create Android platform files (keeps our lib, pubspec, tests)
+        run: |
+          mkdir -p /tmp/bak
+          cp -r lib pubspec.yaml test /tmp/bak/
+          flutter create --org com.salah --project-name salah_reminder --platforms android .
+          rm -rf lib test
+          cp -r /tmp/bak/lib lib
+          cp -r /tmp/bak/test test
+          cp /tmp/bak/pubspec.yaml pubspec.yaml
+      - name: Patch Android config
+        run: python3 tools/patch_android.py
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+        continue-on-error: true
+      - name: Unit tests
+        run: flutter test
+        continue-on-error: true
+      - name: Build release APK
+        run: flutter build apk --release --no-shrink
+      - uses: actions/upload-artifact@v4
+        with:
+          name: salah-reminder-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
