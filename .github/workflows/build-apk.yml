@@ -25,12 +25,6 @@ jobs:
           cp -r /tmp/bak/lib lib
           cp -r /tmp/bak/test test
           cp /tmp/bak/pubspec.yaml pubspec.yaml
-      - name: Pin location plugin to a version that builds with this Flutter
-        run: |
-          if ! grep -q "dependency_overrides" pubspec.yaml; then
-            printf '\ndependency_overrides:\n  geolocator_android: 4.6.1\n' >> pubspec.yaml
-          fi
-          cat pubspec.yaml
       - name: Patch Android config
         run: python3 tools/patch_android.py
       - run: flutter pub get
